@@ -41,7 +41,6 @@ test2.py
 test3.py
 test4.py
 test*.py
-tests/
 test_db_store/
 test_manifest.json
 rocks_store/

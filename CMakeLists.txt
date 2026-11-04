@@ -92,7 +92,7 @@ if(KOR_BUILD_PYTHON_EXTENSION)
     target_include_directories(_kor PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 endif()
 
-if(BUILD_TESTING)
+if(BUILD_TESTING AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests")
     add_subdirectory(tests)
 endif()
 

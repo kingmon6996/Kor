@@ -9,7 +9,7 @@ This guide walks you through installing Kor, creating your first database, conne
 Install from PyPI:
 
 ```bash
-pip install kor-py
+pip install kor-db
 ```
 
 **Requirements:** Python 3.10 – 3.14. Pre-built wheels are available for Windows, Linux, and macOS on x86-64. No compiler needed when installing from a wheel.

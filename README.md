@@ -4,10 +4,10 @@
     <strong>A native, embedded key-value database — single-file, zero dependencies, blazing fast.</strong>
   </p>
   <p align="center">
-    <a href="https://pypi.org/project/kor-py/"><img src="https://img.shields.io/pypi/v/kor-py?color=blue&label=PyPI" alt="PyPI"></a>
-    <a href="https://pypi.org/project/kor-py/"><img src="https://img.shields.io/pypi/pyversions/kor-py?label=Python" alt="Python"></a>
+    <a href="https://pypi.org/project/kor-db/"><img src="https://img.shields.io/pypi/v/kor-db?color=blue&label=PyPI" alt="PyPI"></a>
+    <a href="https://pypi.org/project/kor-db/"><img src="https://img.shields.io/pypi/pyversions/kor-db?label=Python" alt="Python"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-green.svg" alt="License"></a>
-    <a href="https://pypi.org/project/kor-py/"><img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey" alt="Platform"></a>
+    <a href="https://pypi.org/project/kor-db/"><img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey" alt="Platform"></a>
   </p>
 </p>
 
@@ -66,7 +66,7 @@ client.close()
 ## Installation
 
 ```bash
-pip install kor-py
+pip install kor-db
 ```
 
 **Requires Python 3.10 – 3.14.** Pre-built wheels available for Windows, Linux (manylinux 2.28), and macOS (10.15+) on x86-64.
