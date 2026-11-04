@@ -23,7 +23,10 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 include(GNUInstallDirs)
 include(CTest)
 
-option(KOR_BUILD_PYTHON_EXTENSION "Build the Python extension" ON)
+option(KOR_BUILD_PYTHON_EXTENSION "Build the Python extension" OFF)
+if(SKBUILD OR DEFINED ENV{KOR_BUILD_PYTHON_EXTENSION})
+    set(KOR_BUILD_PYTHON_EXTENSION ON CACHE BOOL "Build the Python extension" FORCE)
+endif()
 
 add_library(kor_engine STATIC
     src/version.cpp

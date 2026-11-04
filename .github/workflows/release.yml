@@ -37,6 +37,7 @@ jobs:
       - name: Build CPython wheels
         run: python -m cibuildwheel --output-dir wheelhouse .
         env:
+          CIBW_BUILD_VERBOSITY: 1
           CIBW_BUILD: "cp310-* cp311-* cp312-* cp313-* cp314-*"
           CIBW_SKIP: "*-musllinux_*"
           CIBW_ARCHS_LINUX: "x86_64"
@@ -44,8 +45,10 @@ jobs:
           CIBW_ARCHS_MACOS: "x86_64"
           CIBW_MANYLINUX_X86_64_IMAGE: "manylinux_2_28"
           CIBW_MACOSX_DEPLOYMENT_TARGET: "10.15"
+          CIBW_BEFORE_ALL_LINUX: "yum install -y gcc-toolset-13-gcc-c++ || true"
+          CIBW_ENVIRONMENT_LINUX: 'PATH="/opt/rh/gcc-toolset-13/root/usr/bin:$PATH" CC="/opt/rh/gcc-toolset-13/root/usr/bin/gcc" CXX="/opt/rh/gcc-toolset-13/root/usr/bin/g++"'
           CIBW_TEST_REQUIRES: "pytest>=8"
-          CIBW_TEST_COMMAND: "python -m pytest {project}/tests/python -q"
+          CIBW_TEST_COMMAND: "python -m pytest {project}/tests/python -q --override-ini=testpaths="
 
       - name: Upload wheel artifacts
         uses: actions/upload-artifact@v4
@@ -186,6 +189,64 @@ jobs:
           name: kor-release-checksums
           path: ${{ runner.temp }}/SHA256SUMS.txt
           if-no-files-found: error
+
+
+  build_cpp:
+    name: Build C++ library on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-13]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Configure CMake
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DKOR_BUILD_PYTHON_EXTENSION=OFF -DBUILD_TESTING=OFF
+
+      - name: Build C++ library
+        run: cmake --build build --config Release
+
+      - name: Package library (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          mkdir -p kor-cpp-${{ runner.os }}
+          find build -type f \( -name "libkor_engine.*" -o -name "libkor_engine.a" \) -exec cp {} kor-cpp-${{ runner.os }}/ \; 2>/dev/null || true
+          cp -r include kor-cpp-${{ runner.os }}/
+          tar -czvf kor-cpp-${{ runner.os }}.tar.gz kor-cpp-${{ runner.os }}
+
+      - name: Package library (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path kor-cpp-Windows
+          Get-ChildItem -Path build -Recurse -File -Include kor_engine.lib, kor_engine.dll | ForEach-Object { Copy-Item $_.FullName kor-cpp-Windows/ }
+          Copy-Item -Recurse include kor-cpp-Windows/
+          Compress-Archive -Force -Path kor-cpp-Windows -DestinationPath kor-cpp-Windows.zip
+
+      - name: Upload C++ artifacts to workflow
+        uses: actions/upload-artifact@v4
+        with:
+          name: kor-cpp-${{ runner.os }}
+          path: |
+            kor-cpp-*.tar.gz
+            kor-cpp-*.zip
+          if-no-files-found: ignore
+
+      - name: Attach C++ artifacts to GitHub release
+        if: github.event_name == 'release' && github.event.action == 'published'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            kor-cpp-*.tar.gz
+            kor-cpp-*.zip
+          fail_on_unmatched_files: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   publish_pypi:
     if: github.event_name == 'release' && github.event.action == 'published' && startsWith(github.ref, 'refs/tags/v')
