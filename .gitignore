@@ -1,0 +1,61 @@
+# Build directories
+build/
+cmake-build-*/
+out/
+/dist/
+/wheelhouse/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Native artifacts
+*.o
+*.obj
+*.a
+*.lib
+*.pdb
+*.so
+*.dylib
+*.dll
+*.pyd
+
+# Packaging
+*.egg-info/
+
+# Local data and credentials
+*.kr
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Test files, runners, and benchmark artifacts
+test.py
+test2.py
+test3.py
+test4.py
+test*.py
+tests/
+test_db_store/
+test_manifest.json
+rocks_store/
+benchmark_store/
+*.benchmark
+
+# Environments
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

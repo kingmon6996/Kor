@@ -1,0 +1,95 @@
+[build-system]
+requires = [
+    "scikit-build-core>=1.1.1",
+    "pybind11>=3.0.0",
+]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "kor-py"
+dynamic = ["version"]
+description = "Kor database engine foundation with native C++ core and Python bindings"
+readme = "README.md"
+requires-python = ">=3.10,<3.15"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Kor Contributors" },
+]
+keywords = ["database", "embedded", "cpp", "python", "bindings"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: C++",
+    "Topic :: Database",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=4.1.0",
+]
+
+[tool.scikit-build]
+cmake.version = ">=3.22"
+
+[[tool.dynamic-metadata]]
+provider = "scikit_build_core.metadata.regex"
+field = "version"
+input = "python/kor/_version.py"
+regex = '^__version__ = "(?P<value>[^"]+)"$'
+
+[tool.scikit-build.cmake.define]
+BUILD_TESTING = "OFF"
+
+[tool.scikit-build.sdist]
+include = [
+    "CMakeLists.txt",
+    "pyproject.toml",
+    "README.md",
+    "LICENSE",
+    "include/**",
+    "src/**",
+    "python/kor/*.py",
+    "python/kor/*.pyi",
+    "python/kor/py.typed",
+    "tests/**",
+    "docs/**",
+    "benchmarks/**",
+    "examples/**",
+    "example/**",
+    "test.py",
+    "tools/**",
+]
+exclude = [
+    "build/**",
+    "dist/**",
+    "wheelhouse/**",
+    ".env",
+    ".env.*",
+    "**/*.kr",
+    "**/*.pyd",
+    "**/*.so",
+    "**/*.dylib",
+    "**/*.pdb",
+    "**/*.obj",
+    "**/*.o",
+    "**/*.lib",
+    "**/*.a",
+    "**/*.dll",
+    "**/*.pem",
+    "**/*.key",
+    "**/*.p12",
+    "**/*.pfx",
+    "**/__pycache__/**",
+    "**/.pytest_cache/**",
+    "**/.venv/**",
+    "**/venv/**",
+]
+inclusion-mode = "explicit"
+
+[tool.pytest.ini_options]
+testpaths = ["tests/python"]
+python_files = ["test_*.py"]
