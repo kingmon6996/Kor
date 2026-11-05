@@ -110,10 +110,11 @@ def test_database_uses_automatic_checkpointing_without_interval_argument(tmp_pat
     for _ in range(24):
         database.set("latest", "x" * 4096)
 
-    deadline = time.monotonic() + 5
+    # Allow up to 15 s: Python 3.14 incremental GC can delay background threads
+    deadline = time.monotonic() + 15
     stats = database.storage_stats()
     while stats["last_checkpoint_lsn"] == 0 and time.monotonic() < deadline:
-        time.sleep(0.01)
+        time.sleep(0.05)
         stats = database.storage_stats()
 
     assert stats["last_checkpoint_lsn"] > 0
