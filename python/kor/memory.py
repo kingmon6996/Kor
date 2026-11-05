@@ -1,17 +1,17 @@
-# Copyright 2026 Pravanjan Roy (kingmon6996)
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
+# Copyright 2026 Pravanjan Roy (kingmon6996)
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from __future__ import annotations
 
 import ctypes
@@ -92,6 +92,40 @@ def available_memory_bytes() -> int:
                     available = min(available, max(0, limit - usage))
                 break
         return available
+
+    if operating_system == "Darwin":
+        # macOS: SC_AVPHYS_PAGES is a Linux-only sysconf constant; it raises
+        # ValueError on Darwin. Use sysctlbyname via ctypes instead.
+        try:
+            page_size = int(os.sysconf("SC_PAGE_SIZE"))
+        except (AttributeError, OSError, ValueError):
+            page_size = 4096  # safe default on all Apple Silicon / Intel Macs
+
+        try:
+            libc = ctypes.CDLL(None, use_errno=True)
+            _sysctlbyname = libc.sysctlbyname
+            _sysctlbyname.restype = ctypes.c_int
+
+            total_free = 0
+            for _name in (b"vm.page_free_count", b"vm.page_speculative_count"):
+                _count = ctypes.c_uint32(0)
+                _size = ctypes.c_size_t(ctypes.sizeof(_count))
+                if _sysctlbyname(_name, ctypes.byref(_count), ctypes.byref(_size), None, 0) == 0:
+                    total_free += _count.value
+
+            if total_free > 0:
+                return total_free * page_size
+        except (AttributeError, OSError):
+            pass
+
+        # Fallback: SC_PHYS_PAGES (total physical RAM) is available on macOS
+        # and is a safe upper bound when page_free_count is not readable.
+        try:
+            return int(os.sysconf("SC_PHYS_PAGES")) * page_size
+        except (AttributeError, OSError, ValueError) as error:
+            raise OSError(
+                "macOS could not report currently available physical memory."
+            ) from error
 
     try:
         return int(os.sysconf("SC_AVPHYS_PAGES")) * int(os.sysconf("SC_PAGE_SIZE"))
