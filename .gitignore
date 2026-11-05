@@ -35,12 +35,11 @@ __pycache__/
 *.p12
 *.pfx
 
-# Test files, runners, and benchmark artifacts
-test.py
-test2.py
-test3.py
-test4.py
-test*.py
+# Root-level scratch test runners (not the tests/ suite)
+/test.py
+/test2.py
+/test3.py
+/test4.py
 test_db_store/
 test_manifest.json
 rocks_store/
