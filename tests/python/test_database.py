@@ -1,17 +1,17 @@
-# Copyright 2026 Pravanjan Roy (kingmon6996)
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
+# Copyright 2026 Pravanjan Roy (kingmon6996)
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from pathlib import Path
 import threading
 import time
@@ -315,26 +315,29 @@ def test_read_only_open_rejects_all_storage_mutations(tmp_path):
 
 
 def test_database_rejects_invalid_values():
+    # Use max_memory=16 for cases testing *other* validation so that the memory
+    # budget check (which fires first) does not raise InsufficientSystemMemoryError
+    # on memory-constrained CI runners (macOS M1 runners can have ~196 MiB free).
     with pytest.raises(InvalidConfigurationError):
-        Database(path="database", name="", max_memory=512, snapshot_interval=300)
+        Database(path="database", name="", max_memory=16, snapshot_interval=300)
 
     with pytest.raises(InvalidConfigurationError):
         Database(path="database", name="store", max_memory=0, snapshot_interval=300)
 
     with pytest.raises(InvalidConfigurationError):
-        Database(path="database", name="store", max_memory=512, snapshot_interval=4)
+        Database(path="database", name="store", max_memory=16, snapshot_interval=4)
 
     with pytest.raises(InvalidConfigurationError):
-        Database(path="database", name="store.kr", max_memory=512, snapshot_interval=300)
+        Database(path="database", name="store.kr", max_memory=16, snapshot_interval=300)
 
     with pytest.raises(InvalidConfigurationError):
-        Database(path="database", name="CON", max_memory=512, snapshot_interval=300)
+        Database(path="database", name="CON", max_memory=16, snapshot_interval=300)
 
     with pytest.raises(InvalidConfigurationError):
         Database(path="database", name="store", max_memory=True, snapshot_interval=300)
 
     with pytest.raises(InvalidConfigurationError):
-        Database(path="database", name="store", max_memory=512, snapshot_interval=True)
+        Database(path="database", name="store", max_memory=16, snapshot_interval=True)
 
 
 def test_database_does_not_create_sidecar_files(tmp_path):
