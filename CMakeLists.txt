@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.22)
+﻿cmake_minimum_required(VERSION 3.22)
 
 file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/python/kor/_version.py"
     KOR_VERSION_SOURCE
@@ -45,6 +45,11 @@ add_library(kor_engine STATIC
     src/snapshot.cpp
     src/transaction.cpp
     src/observability.cpp
+    # Phase 1 -- Disk-Primary Storage Engine
+    src/page.cpp
+    src/buffer_pool.cpp
+    src/chunk_manager.cpp
+    src/page_store.cpp
 )
 
 target_include_directories(kor_engine

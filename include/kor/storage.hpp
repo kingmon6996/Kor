@@ -22,6 +22,7 @@
 #include "kor/snapshot.hpp"
 #include "kor/value.hpp"
 #include "kor/wal.hpp"
+#include "kor/page_store.hpp"
 
 namespace kor {
 
@@ -201,6 +202,7 @@ private:
     SecondaryIndexManager secondary_indexes_;
     MemoryTracker tracker_;
     std::unique_ptr<WalLog> wal_;
+    std::unique_ptr<PageStore> page_store_; // Phase 1: disk-primary slotted-page store
     mutable RuntimeMetrics runtime_metrics_;
     mutable std::mutex auto_snapshot_mutex_;
     std::condition_variable auto_snapshot_condition_;

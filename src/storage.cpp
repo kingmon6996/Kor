@@ -1,6 +1,7 @@
 #include "kor/storage.hpp"
 
 #include "kor/exceptions.hpp"
+#include "kor/page_store.hpp"
 #include "kor/serializer.hpp"
 #include "kor/transaction.hpp"
 
@@ -345,6 +346,39 @@ Storage::Storage(std::uint64_t max_memory_bytes,
     tracker_ = recovered_tracker;
     secondary_indexes_.swap(recovered_secondary_indexes);
     runtime_metrics_.increment(MetricCounter::kRecoveryCount);
+
+    // Phase 1: initialise disk-primary PageStore alongside the existing WAL.
+    // The PageStore lives in a sibling .pages/ directory next to the .kr file.
+    // After WAL recovery we bulk-load all live records into the page store in
+    // memory. We do NOT fsync here to avoid adding latency on every open (the
+    // WAL is the authoritative source of truth; the page store is rebuilt on
+    // crash anyway).
+    if (!read_only_) {
+        try {
+            const auto pages_dir =
+                database_path.parent_path() /
+                (database_path.stem().string() + ".pages");
+            const std::size_t buffer_frames = std::max<std::size_t>(
+                32U,
+                static_cast<std::size_t>(max_memory_bytes / 8192U / 4U));
+            page_store_ = std::make_unique<PageStore>(pages_dir, buffer_frames);
+            page_store_->open();
+            // Populate page store in-memory from recovered index.
+            // set() is idempotent; existing pages are overwritten with the
+            // latest value from the WAL.
+            for (const auto& [key, record] : index_.entries()) {
+                if (record.valid) {
+                    page_store_->set(key, record.value);
+                }
+            }
+            // PageStore will be fsynced on the next WAL checkpoint.
+        } catch (const std::exception& ex) {
+            // PageStore failure is non-fatal — engine falls back to WAL-only.
+            page_store_.reset();
+            (void)ex;
+        }
+    }
+
     if (!read_only_) {
         start_auto_snapshot_worker();
     }
@@ -634,6 +668,13 @@ void Storage::close() {
     auto writer = acquire_writer();
     std::unique_lock<std::shared_mutex> lock(mutex_);
     closed_ = true;
+    if (page_store_) {
+        try {
+            page_store_->checkpoint();
+            page_store_->close();
+        } catch (...) {}
+        page_store_.reset();
+    }
     if (wal_) {
         wal_->close();
     }
@@ -855,6 +896,21 @@ CompactionResult Storage::checkpoint_internal(bool require_shrink) {
         if (require_shrink && result.file_size_after_bytes >= result.file_size_before_bytes) {
             recovery_required_ = true;
             throw PersistenceError("Compaction published but did not reduce the physical file size.");
+        }
+        // Phase 1: sync live records to the page store after a successful
+        // WAL checkpoint. The page store is kept consistent with the index.
+        if (page_store_) {
+            try {
+                page_store_->clear();
+                for (const auto& [key, record] : index_.entries()) {
+                    if (record.valid) {
+                        page_store_->set(key, record.value);
+                    }
+                }
+                page_store_->checkpoint();
+            } catch (...) {
+                // PageStore sync failure is non-fatal.
+            }
         }
     } else {
         result.file_size_after_bytes = wal_->stats().file_size_bytes;
