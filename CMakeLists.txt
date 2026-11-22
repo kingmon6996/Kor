@@ -50,6 +50,7 @@ add_library(kor_engine STATIC
     src/buffer_pool.cpp
     src/chunk_manager.cpp
     src/page_store.cpp
+    src/aries.cpp
 )
 
 target_include_directories(kor_engine

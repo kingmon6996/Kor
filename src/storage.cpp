@@ -1,5 +1,6 @@
 #include "kor/storage.hpp"
 
+#include "kor/aries.hpp"
 #include "kor/exceptions.hpp"
 #include "kor/page_store.hpp"
 #include "kor/serializer.hpp"
@@ -333,15 +334,30 @@ Storage::Storage(std::uint64_t max_memory_bytes,
     HashIndex recovered_index;
     MemoryTracker recovered_tracker(max_memory_bytes);
     SecondaryIndexManager recovered_secondary_indexes;
-    if (auto checkpoint = wal_->read_checkpoint(); checkpoint.has_value()) {
-        restore_checkpoint(recovered_index,
-                           recovered_tracker,
-                           recovered_secondary_indexes,
-                           *checkpoint);
+
+    // Phase 2: ARIES three-phase recovery.
+    // The coordinator delegates to the existing apply_record /
+    // restore_checkpoint helpers via callbacks, keeping recovery logic in one
+    // place.  All three phases run before any user operation is accepted.
+    {
+        ARIESRecovery aries(
+            *wal_,
+            recovered_index,
+            recovered_tracker,
+            recovered_secondary_indexes,
+            // REDO callback — apply one WAL record to the in-memory state.
+            [](HashIndex& idx, MemoryTracker& trk,
+               SecondaryIndexManager& sec, const WalRecord& rec) {
+                apply_record(idx, trk, sec, rec);
+            },
+            // ANALYSIS callback — restore checkpoint snapshot into the index.
+            [](HashIndex& idx, MemoryTracker& trk,
+               SecondaryIndexManager& sec, CheckpointData& cp) {
+                restore_checkpoint(idx, trk, sec, cp);
+            });
+        aries.recover();
     }
-    wal_->replay_each([&](const WalRecord& record) {
-        apply_record(recovered_index, recovered_tracker, recovered_secondary_indexes, record);
-    });
+
     index_.swap(recovered_index);
     tracker_ = recovered_tracker;
     secondary_indexes_.swap(recovered_secondary_indexes);
