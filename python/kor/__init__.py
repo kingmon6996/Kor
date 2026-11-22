@@ -36,9 +36,24 @@ from .database import (
 )
 
 
-def connect(path=None, name="", hex="", *, read_only: bool = False) -> Database:
+def connect(
+    path=None,
+    name="",
+    hex="",
+    *,
+    read_only: bool = False,
+    read_concurrency: int = 64,
+    write_concurrency: int = 16,
+) -> Database:
     """Connect to a Kor database stored in ROM using RAM for faster working."""
-    return Database.connect(path=path, name=name, hex=hex, read_only=read_only)
+    return Database.connect(
+        path=path,
+        name=name,
+        hex=hex,
+        read_only=read_only,
+        read_concurrency=read_concurrency,
+        write_concurrency=write_concurrency,
+    )
 
 
 # db alias for Database so `db.connect(...)` works via `from kor import db` or `import kor as db`

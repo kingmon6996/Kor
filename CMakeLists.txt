@@ -1,4 +1,4 @@
-﻿cmake_minimum_required(VERSION 3.22)
+cmake_minimum_required(VERSION 3.22)
 
 file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/python/kor/_version.py"
     KOR_VERSION_SOURCE

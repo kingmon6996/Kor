@@ -35,6 +35,8 @@ _LOGGER = logging.getLogger(__name__)
 _DEFAULT_MAX_MEMORY_MIB = 64
 _DEFAULT_SNAPSHOT_INTERVAL_SECONDS = 60
 _MAX_QUEUED_OPERATIONS = 16
+_DEFAULT_READ_CONCURRENCY = 64
+_DEFAULT_WRITE_CONCURRENCY = 16
 
 _Result = TypeVar("_Result")
 
@@ -97,15 +99,30 @@ class AsyncCompactionResult(TypedDict):
 class AsyncDatabase:
     """Async facade over the synchronous Database and its native storage engine."""
 
-    def __init__(self, database: Database) -> None:
+    def __init__(
+        self,
+        database: Database,
+        *,
+        read_concurrency: int = _DEFAULT_READ_CONCURRENCY,
+        write_concurrency: int = _DEFAULT_WRITE_CONCURRENCY,
+    ) -> None:
         self._database: Database | None = None
         self._probe = database
-        self._executor = concurrent.futures.ThreadPoolExecutor(
-            max_workers=1,
-            thread_name_prefix=f"kor-{database.name}",
+        self._read_concurrency = read_concurrency
+        self._write_concurrency = write_concurrency
+        self._read_executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=read_concurrency,
+            thread_name_prefix=f"kor-read-{database.name}",
         )
+        self._write_executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=write_concurrency,
+            thread_name_prefix=f"kor-write-{database.name}",
+        )
+        self._executor = self._write_executor
         self._loop = asyncio.get_running_loop()
-        self._capacity = asyncio.Semaphore(_MAX_QUEUED_OPERATIONS)
+        self._write_capacity = asyncio.Semaphore(write_concurrency)
+        self._read_capacity = asyncio.Semaphore(read_concurrency)
+        self._capacity = self._write_capacity
         self._drained = asyncio.Event()
         self._drained.set()
         self._state_lock = threading.Lock()
@@ -115,6 +132,10 @@ class AsyncDatabase:
         self._outcome_unknown = False
         self._writer_lock = asyncio.Lock()
         self._close_task: asyncio.Task[None] | None = None
+
+    async def _shutdown_executors(self) -> None:
+        await asyncio.to_thread(self._read_executor.shutdown, True)
+        await asyncio.to_thread(self._write_executor.shutdown, True)
 
     @property
     def path(self) -> Path:
@@ -157,20 +178,20 @@ class AsyncDatabase:
             except Exception:
                 _LOGGER.exception("Async database initialization failed after connection cancellation.")
             else:
-                close_future = self._executor.submit(database.close)
+                close_future = self._write_executor.submit(database.close)
                 try:
                     await asyncio.shield(asyncio.wrap_future(close_future, loop=self._loop))
                 except Exception as cleanup_error:
-                    await asyncio.to_thread(self._executor.shutdown, True)
+                    await self._shutdown_executors()
                     with self._state_lock:
                         self._state = "closed"
                     raise cleanup_error from cancellation
-            await asyncio.to_thread(self._executor.shutdown, True)
+            await self._shutdown_executors()
             with self._state_lock:
                 self._state = "closed"
             raise cancellation
         except Exception:
-            await asyncio.to_thread(self._executor.shutdown, True)
+            await self._shutdown_executors()
             with self._state_lock:
                 self._state = "closed"
             raise
@@ -214,18 +235,21 @@ class AsyncDatabase:
         self,
         operation: Callable[[], _Result],
         *,
+        lane: str = "write",
         on_complete: Callable[[concurrent.futures.Future[Any]], None] | None = None,
         on_submitted: Callable[[concurrent.futures.Future[Any]], None] | None = None,
     ) -> _Result:
         self._ensure_open()
-        await self._capacity.acquire()
+        capacity_sem = self._read_capacity if lane == "read" else self._write_capacity
+        await capacity_sem.acquire()
         try:
             self._ensure_open()
             with self._state_lock:
                 self._inflight += 1
                 self._drained.clear()
+            executor = self._read_executor if lane == "read" else self._write_executor
             try:
-                worker_future = self._executor.submit(operation)
+                worker_future = executor.submit(operation)
             except RuntimeError:
                 with self._state_lock:
                     self._inflight -= 1
@@ -233,7 +257,7 @@ class AsyncDatabase:
                         self._drained.set()
                 raise
         except BaseException:
-            self._capacity.release()
+            capacity_sem.release()
             raise
 
         if on_submitted is not None:
@@ -250,7 +274,7 @@ class AsyncDatabase:
                 with self._state_lock:
                     self._inflight -= 1
                     drained = self._inflight == 0
-                self._capacity.release()
+                capacity_sem.release()
                 if drained:
                     self._drained.set()
                 if not future.cancelled():
@@ -329,17 +353,18 @@ class AsyncDatabase:
             self._outcome_unknown = True
 
     async def get(self, key: str, default: Any = None) -> Any:
-        return await self._dispatch(lambda: self._database.get(key, default))
+        return await self._dispatch(lambda: self._database.get(key, default), lane="read")
 
     async def get_many(self, keys: Any) -> list[Any]:
-        return await self._dispatch(lambda: self._database.get_many(keys))
+        return await self._dispatch(lambda: self._database.get_many(keys), lane="read")
 
     async def set_model(self, key: str, model: KorModel) -> None:
         await self._write(lambda: self._probe.set_model(key, model))
 
     async def get_model(self, key: str, model_type: type[ModelT]) -> ModelT | None:
         return await self._dispatch(
-            lambda: self._probe.get_model(key, model_type)
+            lambda: self._probe.get_model(key, model_type),
+            lane="read",
         )
 
     async def query(
@@ -353,13 +378,15 @@ class AsyncDatabase:
         return await self._dispatch(
             lambda: self._probe.query(
                 filter, prefix=prefix, after=after, limit=limit
-            )
+            ),
+            lane="read",
         )
 
     async def contains_many(self, keys: Any) -> list[bool]:
         materialized_keys = Database._validate_multi_read_keys(keys)
         return await self._dispatch(
-            lambda: self._native_storage().contains_many(materialized_keys)
+            lambda: self._native_storage().contains_many(materialized_keys),
+            lane="read",
         )
 
     async def set(self, key: str | None = None, *values: Any, **kwargs: Any) -> None:
@@ -383,10 +410,10 @@ class AsyncDatabase:
         await self._write(lambda: self._native_storage().clear())
 
     async def contains(self, key: str) -> bool:
-        return await self._dispatch(lambda: self._native_storage().exists(key))
+        return await self._dispatch(lambda: self._native_storage().exists(key), lane="read")
 
     async def count(self) -> int:
-        return await self._dispatch(lambda: self._native_storage().count())
+        return await self._dispatch(lambda: self._native_storage().count(), lane="read")
 
     async def create_index(
         self,
@@ -421,10 +448,10 @@ class AsyncDatabase:
         await self._write(lambda: self._native_storage().drop_index(name))
 
     async def list_indexes(self) -> list[_kor.IndexInfo]:
-        return await self._dispatch(lambda: self._native_storage().list_indexes())
+        return await self._dispatch(lambda: self._native_storage().list_indexes(), lane="read")
 
     async def find(self, field: str, value: Any) -> list[tuple[str, Any]]:
-        return await self._dispatch(lambda: self._native_storage().find(field, value))
+        return await self._dispatch(lambda: self._native_storage().find(field, value), lane="read")
 
     async def find_range(
         self,
@@ -442,7 +469,8 @@ class AsyncDatabase:
                 maximum,
                 include_minimum,
                 include_maximum,
-            )
+            ),
+            lane="read",
         )
 
     async def find_composite(self, fields: Any, values: Any) -> list[tuple[str, Any]]:
@@ -453,7 +481,8 @@ class AsyncDatabase:
         return await self._dispatch(
             lambda: self._native_storage().find_composite(
                 materialized_fields, materialized_values
-            )
+            ),
+            lane="read",
         )
 
     async def find_composite_range(
@@ -481,7 +510,8 @@ class AsyncDatabase:
                 materialized_maximum,
                 include_minimum,
                 include_maximum,
-            )
+            ),
+            lane="read",
         )
 
     async def scan(
@@ -492,14 +522,15 @@ class AsyncDatabase:
         limit: int = 100,
     ) -> dict[str, Any]:
         return await self._dispatch(
-            lambda: self._database.scan(prefix=prefix, after=after, limit=limit)
+            lambda: self._database.scan(prefix=prefix, after=after, limit=limit),
+            lane="read",
         )
 
     async def storage_stats(self) -> AsyncStorageStats:
-        return await self._dispatch(lambda: self._native_storage().storage_stats())
+        return await self._dispatch(lambda: self._native_storage().storage_stats(), lane="read")
 
     async def checkpoint_status(self) -> AsyncCheckpointStatus:
-        return await self._dispatch(lambda: self._native_storage().checkpoint_status())
+        return await self._dispatch(lambda: self._native_storage().checkpoint_status(), lane="read")
 
     async def backup(self, destination: str | Path, *, overwrite: bool = False) -> dict[str, Any]:
         database = self._database
@@ -553,7 +584,7 @@ class AsyncDatabase:
         database = self._database
         if database is None:
             raise AsyncDatabaseClosedError("The async database is not open.")
-        return await self._dispatch(lambda: database.verify_integrity(level=level))
+        return await self._dispatch(lambda: database.verify_integrity(level=level), lane="read")
 
     async def compact(self) -> AsyncCompactionResult:
         return await self._write(lambda: self._native_storage().compact())
@@ -589,9 +620,9 @@ class AsyncDatabase:
             await self._drained.wait()
             database = self._database
             if database is not None:
-                future = self._executor.submit(database.close)
+                future = self._write_executor.submit(database.close)
                 await asyncio.shield(asyncio.wrap_future(future, loop=self._loop))
-            await asyncio.to_thread(self._executor.shutdown, True)
+            await self._shutdown_executors()
             self._database = None
             with self._state_lock:
                 self._state = "closed"
@@ -829,6 +860,8 @@ async def async_connect(
     hex: str | None = None,
     *,
     read_only: bool = False,
+    read_concurrency: int = _DEFAULT_READ_CONCURRENCY,
+    write_concurrency: int = _DEFAULT_WRITE_CONCURRENCY,
 ) -> AsyncDatabase:
     """Open an existing database or create one, optionally using a hex token."""
     if hex is not None:
@@ -841,7 +874,11 @@ async def async_connect(
             snapshot_interval=_DEFAULT_SNAPSHOT_INTERVAL_SECONDS,
             read_only=read_only,
         )
-    database = AsyncDatabase(probe)
+    database = AsyncDatabase(
+        probe,
+        read_concurrency=read_concurrency,
+        write_concurrency=write_concurrency,
+    )
     await database._open()
     return database
 

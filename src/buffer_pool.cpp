@@ -44,6 +44,38 @@ void PinnedPage::mark_dirty() noexcept {
         frame_->dirty.store(true, std::memory_order_relaxed);
 }
 
+void PinnedPage::lock_shared() const {
+    if (frame_)
+        frame_->latch.lock_shared();
+}
+
+void PinnedPage::unlock_shared() const {
+    if (frame_)
+        frame_->latch.unlock_shared();
+}
+
+void PinnedPage::lock_exclusive() {
+    if (frame_)
+        frame_->latch.lock();
+}
+
+void PinnedPage::unlock_exclusive() {
+    if (frame_)
+        frame_->latch.unlock();
+}
+
+std::shared_lock<std::shared_mutex> PinnedPage::shared_latch() const {
+    if (frame_)
+        return std::shared_lock<std::shared_mutex>(frame_->latch);
+    return {};
+}
+
+std::unique_lock<std::shared_mutex> PinnedPage::exclusive_latch() {
+    if (frame_)
+        return std::unique_lock<std::shared_mutex>(frame_->latch);
+    return {};
+}
+
 // ---------------------------------------------------------------------------
 // BufferPool
 // ---------------------------------------------------------------------------

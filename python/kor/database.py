@@ -373,6 +373,7 @@ def _connect_database(
     hex: str,
     *,
     read_only: bool = False,
+    **kwargs: Any,
 ) -> Database:
     if path is None:
         path = ""
@@ -461,8 +462,8 @@ class _ConnectMethod:
 
     def __get__(self, instance, owner):
         if instance is None:
-            def _class_connect(path=None, name="", hex="", *, read_only=False):
-                return _connect_database(owner, path, name, hex, read_only=read_only)
+            def _class_connect(path=None, name="", hex="", *, read_only=False, **kwargs):
+                return _connect_database(owner, path, name, hex, read_only=read_only, **kwargs)
             return _class_connect
         else:
             def _instance_connect(path=None, name="", hex="", *, read_only=False):

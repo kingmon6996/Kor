@@ -550,6 +550,7 @@ bool Storage::set(const std::string& key, const Value& value) {
     MetricTimer timer(runtime_metrics_, LatencyKind::kWrite);
     validate_key(key);
     validate_value(value);
+    auto shard_lock = shard_locks_.write(key);
     auto writer = acquire_writer();
     std::unique_lock<std::shared_mutex> lock(mutex_);
     ensure_usable();
@@ -562,6 +563,7 @@ bool Storage::set(const std::string& key, const Value& value) {
 std::optional<Value> Storage::get(const std::string& key) const {
     MetricTimer timer(runtime_metrics_, LatencyKind::kRead);
     validate_key(key);
+    auto shard_lock = shard_locks_.read(key);
     std::shared_lock<std::shared_mutex> lock(mutex_);
     ensure_usable();
     const auto existing = index_.get(key);
@@ -623,6 +625,7 @@ std::vector<bool> Storage::contains_many(const std::vector<std::string>& keys) c
 bool Storage::exists(const std::string& key) const {
     MetricTimer timer(runtime_metrics_, LatencyKind::kRead);
     validate_key(key);
+    auto shard_lock = shard_locks_.read(key);
     std::shared_lock<std::shared_mutex> lock(mutex_);
     ensure_usable();
     const bool result = index_.contains(key);
@@ -634,6 +637,7 @@ bool Storage::exists(const std::string& key) const {
 bool Storage::erase(const std::string& key) {
     MetricTimer timer(runtime_metrics_, LatencyKind::kDelete);
     validate_key(key);
+    auto shard_lock = shard_locks_.write(key);
     auto writer = acquire_writer();
     std::unique_lock<std::shared_mutex> lock(mutex_);
     ensure_usable();
@@ -943,6 +947,7 @@ CompactionResult Storage::checkpoint_internal(bool require_shrink) {
 bool Storage::set_if_absent(const std::string& key, const Value& value) {
     validate_key(key);
     validate_value(value);
+    auto shard_lock = shard_locks_.write(key);
     auto writer = acquire_writer();
     std::unique_lock<std::shared_mutex> lock(mutex_);
     ensure_usable();
@@ -957,6 +962,7 @@ bool Storage::set_if_absent(const std::string& key, const Value& value) {
 bool Storage::replace(const std::string& key, const Value& value) {
     validate_key(key);
     validate_value(value);
+    auto shard_lock = shard_locks_.write(key);
     auto writer = acquire_writer();
     std::unique_lock<std::shared_mutex> lock(mutex_);
     ensure_usable();
@@ -974,6 +980,7 @@ bool Storage::compare_and_set(const std::string& key,
     validate_key(key);
     validate_value(expected);
     validate_value(desired);
+    auto shard_lock = shard_locks_.write(key);
     auto writer = acquire_writer();
     std::unique_lock<std::shared_mutex> lock(mutex_);
     ensure_usable();
@@ -989,6 +996,7 @@ bool Storage::compare_and_set(const std::string& key,
 std::optional<Value> Storage::get_and_set(const std::string& key, const Value& value) {
     validate_key(key);
     validate_value(value);
+    auto shard_lock = shard_locks_.write(key);
     auto writer = acquire_writer();
     std::unique_lock<std::shared_mutex> lock(mutex_);
     ensure_usable();
@@ -1000,6 +1008,7 @@ std::optional<Value> Storage::get_and_set(const std::string& key, const Value& v
 
 std::optional<Value> Storage::get_and_delete(const std::string& key) {
     validate_key(key);
+    auto shard_lock = shard_locks_.write(key);
     auto writer = acquire_writer();
     std::unique_lock<std::shared_mutex> lock(mutex_);
     ensure_usable();

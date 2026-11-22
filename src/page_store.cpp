@@ -189,6 +189,7 @@ bool PageStore::set(const std::string& key, const Value& value) {
     if (it != directory_.end()) {
         const auto& addr = it->second.addr;
         auto pinned = pool_.fetch(addr.file_id, addr.page_id);
+        auto latch = pinned.exclusive_latch();
         pinned.page().erase(addr.slot_id);
         pinned.mark_dirty();
         // Don't re-add the page to current — just tombstone in place
@@ -202,6 +203,7 @@ bool PageStore::set(const std::string& key, const Value& value) {
 
     bool is_new_page = false;
     auto pinned = get_or_alloc_page(encoded.size(), is_new_page);
+    auto latch = pinned.exclusive_latch();
     auto slot_opt = pinned.page().insert(encoded);
     if (!slot_opt.has_value()) {
         // Shouldn't happen since get_or_alloc_page checked free space
@@ -231,6 +233,7 @@ std::optional<Value> PageStore::get(const std::string& key) const {
     const auto& addr = it->second.addr;
     // const_cast safe: fetch is conceptually read-only here
     auto pinned = const_cast<BufferPool&>(pool_).fetch(addr.file_id, addr.page_id);
+    auto latch = pinned.shared_latch();
     const auto raw = pinned.page().read_record(addr.slot_id);
     if (raw.empty()) return std::nullopt;
 
@@ -262,6 +265,7 @@ bool PageStore::erase(const std::string& key) {
 
     const auto& addr = it->second.addr;
     auto pinned = pool_.fetch(addr.file_id, addr.page_id);
+    auto latch = pinned.exclusive_latch();
     pinned.page().erase(addr.slot_id);
     pinned.mark_dirty();
 

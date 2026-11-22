@@ -19,6 +19,7 @@
 #include "kor/observability.hpp"
 #include "kor/record.hpp"
 #include "kor/secondary_index.hpp"
+#include "kor/shard_lock.hpp"
 #include "kor/snapshot.hpp"
 #include "kor/value.hpp"
 #include "kor/wal.hpp"
@@ -203,6 +204,7 @@ private:
     MemoryTracker tracker_;
     std::unique_ptr<WalLog> wal_;
     std::unique_ptr<PageStore> page_store_; // Phase 1: disk-primary slotted-page store
+    ShardLockMap shard_locks_;              // Phase 3: 256-shard key-space locks
     mutable RuntimeMetrics runtime_metrics_;
     mutable std::mutex auto_snapshot_mutex_;
     std::condition_variable auto_snapshot_condition_;

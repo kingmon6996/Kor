@@ -19,6 +19,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <shared_mutex>
 #include <unordered_map>
 #include <vector>
 
@@ -37,6 +38,7 @@ struct Frame {
     bool             occupied = false; // true → holds a valid page
     std::uint8_t     file_id  = 0;
     std::uint32_t    page_id  = 0;
+    mutable std::shared_mutex latch;  // Phase 3.2: per-page buffer pool latch
 };
 
 // ---------------------------------------------------------------------------
@@ -61,6 +63,14 @@ public:
 
     // Mark dirty so the pool knows to write before eviction
     void mark_dirty() noexcept;
+
+    // Phase 3.2: Per-page buffer pool latches
+    void lock_shared() const;
+    void unlock_shared() const;
+    void lock_exclusive();
+    void unlock_exclusive();
+    [[nodiscard]] std::shared_lock<std::shared_mutex> shared_latch() const;
+    [[nodiscard]] std::unique_lock<std::shared_mutex> exclusive_latch();
 
 private:
     Frame*      frame_     = nullptr;
